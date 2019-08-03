@@ -51,17 +51,21 @@ static const uint8_t encoderLookup[256*3]={	0x92,0x49,0x24,0x92,0x49,0x26,0x92,0
   #error No clock divisor available for this F_CPU
 #endif
 
+#define GRB   0
+#define GRBW  1
+
+
 class WS2812B {
  public:
 
   // Constructor: number of LEDs
-  WS2812B (uint16_t number_of_leds);// Constuctor 
+  WS2812B (uint16_t number_of_leds, uint8_t cScheme);// Constuctor 
     ~WS2812B();
   void
     begin(void),
     show(void),
     setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b),
- //   setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w),
+    setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w),
     setPixelColor(uint16_t n, uint32_t c),
     setBrightness(uint8_t),
     clear(),
@@ -88,6 +92,7 @@ class WS2812B {
     numBytes;      // Size of 'pixels' buffer
 	
   uint8_t
+    cScheme,
     brightness,
    *pixels,        // Holds the current LED color values, which the external API calls interact with 9 bytes per pixel + start + end empty bytes
    *doubleBuffer,	// Holds the start of the double buffer (1 buffer for async DMA transfer and one for the API interaction.

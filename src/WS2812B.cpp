@@ -29,8 +29,8 @@
 
 
 // Constructor when n is the number of LEDs in the strip
-WS2812B::WS2812B(uint16_t number_of_leds) :
-  brightness(0), pixels(NULL)
+WS2812B::WS2812B(uint16_t number_of_leds, uint8_t cScheme) :
+  brightness(0), pixels(NULL), cScheme(cScheme)
 {
   updateLength(number_of_leds);
 }
@@ -62,8 +62,12 @@ void WS2812B::updateLength(uint16_t n)
 	  free(doubleBuffer); 
   }
 
-  numBytes = (n<<3) + n + 2; // 9 encoded bytes per pixel. 1 byte empty peamble to fix issue with SPI MOSI and on byte at the end to clear down MOSI 
-							// Note. (n<<3) +n is a fast way of doing n*9
+  if (cScheme == GRB)
+    numBytes = (n<<3) + n + 2; // 9 encoded bytes per pixel. 1 byte empty peamble to fix issue with SPI MOSI and on byte at the end to clear down MOSI 
+							  // Note. (n<<3) +n is a fast way of doing n*9
+  else
+    numBytes = (n<<3) + (n<<2) + 2; // 12 encoded bytes per pixel. 1 byte empty peamble to fix issue with SPI MOSI and on byte at the end to clear down MOSI 
+							  // Note. (n<<3) + (n<<2) = 8*n + 4*n = 12*n
   if((doubleBuffer = (uint8_t *)malloc(numBytes*2)))
   {
     numLEDs = n;	 
@@ -125,24 +129,9 @@ void WS2812B::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b)
    *bptr++ = *tPtr++;
  }
 
-void WS2812B::setPixelColor(uint16_t n, uint32_t c)
-  {
-     uint8_t r,g,b;
-   
-    if(brightness) 
-	{ 
-      r = ((int)((uint8_t)(c >> 16)) * (int)brightness) >> 8;
-      g = ((int)((uint8_t)(c >>  8)) * (int)brightness) >> 8;
-      b = ((int)((uint8_t)c) * (int)brightness) >> 8;
-	}
-	else
-	{
-      r = (uint8_t)(c >> 16),
-      g = (uint8_t)(c >>  8),
-	  b = (uint8_t)c;		
-	}
-	
-   uint8_t *bptr = pixels + (n<<3) + n +1;
+void WS2812B::setPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w)
+ {
+   uint8_t *bptr = pixels + (n<<3) + (n<<2) + 1;
    uint8_t *tPtr = (uint8_t *)encoderLookup + g*2 + g;// need to index 3 x g into the lookup
    
    *bptr++ = *tPtr++;
@@ -158,6 +147,77 @@ void WS2812B::setPixelColor(uint16_t n, uint32_t c)
    *bptr++ = *tPtr++;
    *bptr++ = *tPtr++;
    *bptr++ = *tPtr++;
+   
+   tPtr = (uint8_t *)encoderLookup + w*2 + w;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+ }
+
+void WS2812B::setPixelColor(uint16_t n, uint32_t c)
+  {
+     uint8_t r,g,b,w;
+   
+  if (cScheme == GRB)
+  {
+    if(brightness) 
+    { 
+        r = ((int)((uint8_t)(c >> 16)) * (int)brightness) >> 8;
+        g = ((int)((uint8_t)(c >>  8)) * (int)brightness) >> 8;
+        b = ((int)((uint8_t)c) * (int)brightness) >> 8;
+    }
+    else
+    {
+        r = (uint8_t)(c >> 16),
+        g = (uint8_t)(c >>  8),
+        b = (uint8_t)c;		
+    }
+  }
+  else
+  {
+    if(brightness) 
+    { 
+        w = ((int)((uint8_t)(c >> 24)) * (int)brightness) >> 8;
+        r = ((int)((uint8_t)(c >> 16)) * (int)brightness) >> 8;
+        g = ((int)((uint8_t)(c >>  8)) * (int)brightness) >> 8;
+        b = ((int)((uint8_t)c) * (int)brightness) >> 8;
+    }
+    else
+    {
+        w = (uint8_t)(c >> 24),
+        r = (uint8_t)(c >> 16),
+        g = (uint8_t)(c >>  8),
+        b = (uint8_t)c;		
+    }
+  }
+	
+  uint8_t *bptr = NULL;
+  if (cScheme == GRB)
+    bptr = pixels + (n<<3) + n +1;
+  else
+    bptr = pixels + (n<<3) + (n<<2) +1;
+   uint8_t *tPtr = (uint8_t *)encoderLookup + g*2 + g;// need to index 3 x g into the lookup
+   
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+
+   tPtr = (uint8_t *)encoderLookup + r*2 + r;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;   
+   
+   tPtr = (uint8_t *)encoderLookup + b*2 + b;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+  if (cScheme == GRB)
+  {
+   tPtr = (uint8_t *)encoderLookup + w*2 + w;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+   *bptr++ = *tPtr++;
+  }
 }
 
 // Convert separate R,G,B into packed 32-bit RGB color.
@@ -207,7 +267,7 @@ void WS2812B::setBrightness(uint8_t b) {
     else if(b == 255) scale = 65535 / oldBrightness;
     else scale = (((uint16_t)newBrightness << 8) - 1) / oldBrightness;
     for(uint16_t i=0; i<numBytes; i++) 
-	{
+	  {
       c      = *ptr;
       *ptr++ = (c * scale) >> 8;
     }
@@ -225,14 +285,27 @@ uint8_t WS2812B::getBrightness(void) const {
 */
 void WS2812B::clear() 
 {
-	uint8_t * bptr= pixels+1;// Note first byte in the buffer is a preable and is always zero. hence the +1
+	uint8_t *bptr= pixels+1;// Note first byte in the buffer is a preable and is always zero. hence the +1
 	uint8_t *tPtr;
 
-	for(int i=0;i< (numLEDs *3);i++)
-	{
-	   tPtr = (uint8_t *)encoderLookup;
-   	   *bptr++ = *tPtr++;
-	   *bptr++ = *tPtr++;
-	   *bptr++ = *tPtr++;	
-	}
+  if (cScheme == GRB)
+  {
+    for(int i=0;i< (numLEDs *3);i++)
+    {
+      tPtr = (uint8_t *)encoderLookup;
+        *bptr++ = *tPtr++;
+      *bptr++ = *tPtr++;
+      *bptr++ = *tPtr++;	
+    }
+  }
+  else
+  {
+    for(int i=0;i< (numLEDs *4);i++)
+    {
+      tPtr = (uint8_t *)encoderLookup;
+      *bptr++ = *tPtr++;
+      *bptr++ = *tPtr++;
+      *bptr++ = *tPtr++;	
+    }
+  }
 }
